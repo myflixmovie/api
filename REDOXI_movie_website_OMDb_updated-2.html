@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REDOXI | Movie Discovery</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#090b12;--card:#151925;--accent:#ff3155;--muted:#a8afc0}
+body{background:var(--bg);color:#fff;font-family:Arial,sans-serif}
+header{min-height:75px;padding:14px 6%;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;background:#090b12;position:sticky;top:0;z-index:10;border-bottom:1px solid #242838}
+.logo{font-size:28px;font-weight:900;color:var(--accent);letter-spacing:2px}
+.search{display:flex;gap:8px;flex:1;max-width:430px}
+input{min-width:0;width:100%;padding:12px;background:#1b2030;color:white;border:1px solid #333a4e;border-radius:8px;outline:none}
+button{cursor:pointer;border:0;padding:12px 16px;border-radius:8px;background:var(--accent);color:white;font-weight:bold;transition:.2s}
+button:hover{transform:translateY(-2px);filter:brightness(1.12)}
+.hero{min-height:390px;display:flex;align-items:center;padding:50px 7%;background:linear-gradient(90deg,#090b12 5%,rgba(9,11,18,.8) 48%,transparent),linear-gradient(0deg,#090b12,transparent 60%),#252b3d;background-size:cover;background-position:center}
+.hero-content{max-width:550px}.tag{color:var(--accent);font-weight:bold;margin-bottom:15px}
+.hero h1{font-size:clamp(34px,6vw,62px);margin-bottom:16px}.hero p{line-height:1.7;color:#d1d5df;margin-bottom:22px}
+.section{padding:30px 6%}.section h2{margin-bottom:22px;font-size:24px}
+.filters{display:flex;gap:10px;overflow-x:auto;padding-bottom:20px}.filters button{flex-shrink:0;background:#202536}.filters button.active{background:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:20px}
+.movie{background:var(--card);border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .25s,box-shadow .25s;animation:appear .4s ease both}
+.movie:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 10px 30px #0008}
+.movie img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#202536}
+.movie-info{padding:12px}.movie-info h3{font-size:14px;margin-bottom:8px;line-height:1.4}.rating{color:#ffd166;font-size:13px}.year{color:var(--muted);font-size:12px;margin-top:6px}
+.status{color:var(--muted);text-align:center;padding:35px 10px;line-height:1.8;overflow-wrap:anywhere}
+footer{padding:30px;text-align:center;color:var(--muted);border-top:1px solid #252a39;margin-top:40px}
+.modal{position:fixed;inset:0;z-index:30;background:#000d;display:none;justify-content:center;align-items:center;padding:20px;overflow-y:auto}.modal.open{display:flex}
+.modal-box{width:min(750px,100%);max-height:90vh;overflow-y:auto;background:#151925;border-radius:15px;position:relative;padding:25px}
+.close{position:absolute;top:12px;right:12px;z-index:2;background:#33394a}
+.details{display:grid;grid-template-columns:180px 1fr;gap:22px;margin-top:25px}.details img{width:100%;border-radius:10px}
+.details p{color:#c4cad6;line-height:1.7;margin:12px 0}.player{display:block;width:100%;aspect-ratio:16/9;background:#000;margin-top:20px}
+@keyframes appear{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:550px){header{padding:12px 4%}.logo{font-size:23px}.search{width:100%;max-width:none}.hero{min-height:350px;padding:35px 6%}.section{padding:25px 4%}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.details{grid-template-columns:100px 1fr;gap:12px}.modal-box{padding:18px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">REDOXI</div>
+  <form class="search" id="searchForm">
+    <input id="searchInput" type="search" placeholder="Search movies..." aria-label="Search movies">
+    <button type="submit">Search</button>
+  </form>
+</header>
+<section class="hero" id="hero">
+  <div class="hero-content">
+    <div class="tag">YOUR MOVIE UNIVERSE</div>
+    <h1>Discover Your Next Movie.</h1>
+    <p>Explore trending movies, discover new stories, and find your next favourite film.</p>
+    <button onclick="loadTrending()">Explore Movies ↓</button>
+  </div>
+</section>
+<section class="section">
+  <h2>Quick Movie Searches</h2>
+  <div class="filters" id="filters">
+    <button class="active" data-id="Avengers">Avengers</button>
+    <button data-id="Action">Action</button><button data-id="Comedy">Comedy</button>
+    <button data-id="Horror">Horror</button><button data-id="Science Fiction">Sci-Fi</button>
+    <button data-id="Romance">Romance</button><button data-id="Animation">Animation</button>
+  </div>
+</section>
+<section class="section" id="catalogue">
+  <h2 id="sectionTitle">Trending Movies</h2>
+  <div class="grid" id="movies"></div>
+  <div class="status" id="status">Loading movie picks from OMDb...</div>
+</section>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Movie details">
+  <div class="modal-box"><button class="close" id="closeButton" aria-label="Close">✕</button><div id="modalContent"></div></div>
+</div>
+<footer>© 2026 REDOXI · Discover your next story</footer>
+<script>
+/*
+  OMDb API setup: API key is inserted below. A key in browser code is public; use a backend proxy for a public site. OMDb provides movie metadata/posters, not full movie streams.
+*/
+const OMDB_API_KEY = "25bdbf40";
+const OMDB_API_BASE = "https://www.omdbapi.com/";
+const IMAGE_BASE = "";
+const moviesElement = document.getElementById("movies");
+const statusElement = document.getElementById("status");
+const modal = document.getElementById("modal");
+let requestNumber = 0;
+
+async function omdbRequest(params) {
+  const query = new URLSearchParams({ apikey: OMDB_API_KEY, ...params });
+  const response = await fetch(OMDB_API_BASE + "?" + query.toString());
+  if (!response.ok) throw new Error("OMDb request failed (" + response.status + ").");
+  const data = await response.json();
+  if (data.Response === "False") throw new Error(data.Error || "No results found.");
+  return data;
+}
+
+async function loadMovies(path, title) {
+  const currentRequest = ++requestNumber;
+  document.getElementById("sectionTitle").textContent = title;
+  moviesElement.replaceChildren();
+  statusElement.style.display = "block";
+  statusElement.textContent = "Loading movies...";
+
+  try {
+    let data;
+    const params = new URLSearchParams(path.split("?")[1] || "");
+    if (path.startsWith("/search/movie")) {
+      data = await omdbRequest({ s: params.get("query") || "", type: "movie", page: "1" });
+    } else if (path.startsWith("/movie/")) {
+      data = await omdbRequest({ i: path.split("/").pop(), plot: "full" });
+    } else {
+      // OMDb has no trending or genre endpoints; use popular searchable starter titles.
+      const starter = ["Avengers", "Spider-Man", "Batman", "Harry Potter", "Mission Impossible", "Jurassic Park"];
+      const results = await Promise.all(starter.map(async q => {
+        try {
+          const result = await omdbRequest({ s: q, type: "movie", page: "1" });
+          return result.Search || [];
+        } catch { return []; }
+      }));
+      data = { Search: results.flat() };
+    }
+
+    if (currentRequest !== requestNumber) return;
+    const seen = new Set();
+    const list = (data.Search || []).filter(movie => {
+      if (!movie.Poster || movie.Poster === "N/A") return false;
+      const key = movie.imdbID || movie.Title;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (!list.length) {
+      statusElement.textContent = "No movies found. Try another search.";
+      return;
+    }
+
+    statusElement.style.display = "none";
+    list.forEach(movie => {
+      const card = document.createElement("article");
+      card.className = "movie";
+      card.tabIndex = 0;
+
+      const image = document.createElement("img");
+      image.src = movie.Poster;
+      image.alt = (movie.Title || "Movie") + " poster";
+      image.loading = "lazy";
+
+      const info = document.createElement("div");
+      info.className = "movie-info";
+      const name = document.createElement("h3");
+      name.textContent = movie.Title || "Untitled";
+      const rating = document.createElement("div");
+      rating.className = "rating";
+      rating.textContent = "IMDb";
+      const year = document.createElement("div");
+      year.className = "year";
+      year.textContent = movie.Year || "";
+
+      info.append(name, rating, year);
+      card.append(image, info);
+      card.addEventListener("click", () => showDetails(movie.imdbID));
+      card.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          showDetails(movie.imdbID);
+        }
+      });
+      moviesElement.appendChild(card);
+    });
+  } catch (error) {
+    if (currentRequest !== requestNumber) return;
+    statusElement.textContent = error.message;
+  }
+}
+
+function loadTrending() {
+  loadMovies("/discover/movie", "Movie Picks");
+}
+
+async function showDetails(id) {
+  modal.classList.add("open");
+  const content = document.getElementById("modalContent");
+  content.textContent = "Loading movie details...";
+  try {
+    const movie = await omdbRequest({ i: id, plot: "full" });
+    content.replaceChildren();
+
+    const heading = document.createElement("h2");
+    heading.textContent = movie.Title || "Movie details";
+    const details = document.createElement("div");
+    details.className = "details";
+
+    const poster = document.createElement("img");
+    if (movie.Poster && movie.Poster !== "N/A") poster.src = movie.Poster;
+    poster.alt = (movie.Title || "Movie") + " poster";
+
+    const description = document.createElement("div");
+    const rating = document.createElement("p");
+    rating.textContent = "IMDb rating: " + (movie.imdbRating || "N/A");
+    const year = document.createElement("p");
+    year.textContent = "Release year: " + (movie.Year || "Unknown");
+    const overview = document.createElement("p");
+    overview.textContent = movie.Plot || "No description available.";
+    const genre = document.createElement("p");
+    genre.textContent = "Genre: " + (movie.Genre || "Unknown");
+
+    const watchButton = document.createElement("button");
+    watchButton.textContent = "Open Video Player";
+    watchButton.addEventListener("click", () => showPlayer(movie.Title || "Movie"));
+
+    const note = document.createElement("p");
+    note.textContent = "Playback requires an authorized video URL. OMDb provides movie information, not the full film.";
+    description.append(rating, year, genre, overview, watchButton, note);
+    details.append(poster, description);
+    content.append(heading, details);
+  } catch (error) {
+    content.textContent = error.message;
+  }
+}
+function showPlayer(title) {
+  const content = document.getElementById("modalContent");
+  content.replaceChildren();
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Player: " + title;
+  const message = document.createElement("p");
+  message.style.marginTop = "15px";
+  message.textContent = "Enter an authorized direct video URL, such as your own MP4 file. Some streaming services block playback from external pages.";
+  const video = document.createElement("video");
+  video.className = "player";
+  video.controls = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+
+  const input = document.createElement("input");
+  input.type = "url";
+  input.placeholder = "https://example.com/your-authorized-video.mp4";
+  input.style.width = "100%";
+  input.style.marginTop = "15px";
+
+  const play = document.createElement("button");
+  play.textContent = "Load Video";
+  play.style.marginTop = "10px";
+  play.addEventListener("click", () => {
+    try {
+      const parsed = new URL(input.value.trim());
+      if (!["https:", "http:"].includes(parsed.protocol)) throw new Error();
+      video.src = parsed.href;
+      video.load();
+      video.play().catch(() => {
+        message.textContent = "Video loaded. Press Play, or check that the URL supports direct video playback.";
+      });
+    } catch {
+      message.textContent = "Please enter a valid HTTP or HTTPS video URL.";
+    }
+  });
+  content.append(heading, message, video, input, play);
+}
+
+function closeModal() { modal.classList.remove("open"); }
+document.getElementById("closeButton").addEventListener("click", closeModal);
+modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+document.getElementById("searchForm").addEventListener("submit", e => {
+  e.preventDefault(); const query = document.getElementById("searchInput").value.trim();
+  if (query) loadMovies("/search/movie?query=" + encodeURIComponent(query), "Search Results");
+});
+document.getElementById("filters").addEventListener("click", e => {
+  const button = e.target.closest("button[data-id]"); if (!button) return;
+  document.querySelectorAll("#filters button").forEach(item => item.classList.toggle("active", item === button));
+  const term = button.dataset.id;
+  if (term === "Avengers") loadTrending();
+  else {
+    document.getElementById("searchInput").value = term;
+    loadMovies("/search/movie?query=" + encodeURIComponent(term), button.textContent + " Search Results");
+  }
+});
+loadTrending();
+</script>
+</body>
+</html>
